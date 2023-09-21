@@ -1,68 +1,55 @@
 import React, { useState, useEffect } from 'react';
 import './todos.css';
+import { ref, onValue, push, set, remove } from 'firebase/database';
+import { db } from '../firebase';
 
 const TodoList = () => {
-	const [todos, setTodos] = useState([]);
+	const [todos, setTodos] = useState({});
 	const [item, setItem] = useState('');
-	const [refreshTodosFlag, setRefreshTodosFlag] = useState(false);
 	const [isCreating, setIsCreating] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [search, setSearch] = useState('');
 
-	const refreshTodos = () => setRefreshTodosFlag(!refreshTodosFlag);
-
 	useEffect(() => {
-		fetch('http://localhost:2970/todos')
-			.then((response) => response.json())
-			.then((responseTodos) => {
-				setTodos(responseTodos);
-			});
-	}, [refreshTodosFlag]);
+		const todosDbRef = ref(db, 'todos');
+		return onValue(todosDbRef, (snapshot) => {
+			const loadedTodos = snapshot.val() || {};
+
+			setTodos(loadedTodos);
+		});
+	}, []);
 
 	const newItem = () => {
 		setIsCreating(true);
-		fetch('http://localhost:2970/todos', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json;charset=utf-8' },
-			body: JSON.stringify({
-				name: item,
-			}),
+		const addTodosDbRef = ref(db, 'todos');
+		push(addTodosDbRef, {
+			name: item,
 		})
-			.then((rawResponse) => rawResponse.json())
 			.then((response) => {
 				console.log('Задача добавлена, ответ от сервера', response);
-				refreshTodos();
 			})
 			.finally(() => setIsCreating(false));
 	};
 
 	const deleteItem = (id) => {
 		setIsDeleting(true);
-		fetch(`http://localhost:2970/todos/${id}`, {
-			method: 'DELETE',
-			headers: { 'Content-Type': 'application/json;charset=utf-8' },
-		})
-			.then((rawResponse) => rawResponse.json())
+		const deleteTodosDbRef = ref(db, `todos/${id}`);
+
+		remove(deleteTodosDbRef)
 			.then((response) => {
 				console.log('Задача удалена, ответ от сервера', response);
-				refreshTodos();
 			})
 			.finally(() => setIsDeleting(false));
 	};
 
 	const editingItem = (id, newName) => {
-		fetch(`http://localhost:2970/todos/${id}`, {
-			method: 'PUT',
-			headers: { 'Content-Type': 'application/json;charset=utf-8' },
-			body: JSON.stringify({
-				name: newName,
-			}),
-		})
-			.then((rawResponse) => rawResponse.json())
-			.then((response) => {
-				console.log('Задача изменена, ответ от сервера', response);
-				refreshTodos();
-			});
+		const editTodosDbRef = ref(db, `todos/${id}`);
+
+		set(editTodosDbRef, {
+			name: newName,
+		}).then((response) => {
+			console.log('Задача изменена, ответ от сервера', response);
+		});
 	};
 
 	const keyPress = (e) => {
@@ -71,10 +58,6 @@ const TodoList = () => {
 			newItem();
 		}
 	};
-
-	const filteredTodos = todos.filter((todo) => {
-		return todo.name.toLowerCase().includes(search.toLowerCase());
-	});
 
 	return (
 		<div className="wrapper">
@@ -95,35 +78,37 @@ const TodoList = () => {
 			<button disabled={isCreating} className="enter" onClick={newItem}>
 				ENTER
 			</button>
-			{filteredTodos.map(({ id, name }) => (
-				<div key={id}>
-					<div className="item-todo">
-						<button
-							className="item-delete"
-							disabled={isDeleting}
-							onClick={() => {
-								deleteItem(id);
-							}}
-						>
-							X
-						</button>
-						<button
-							className="item-edit"
-							onClick={() => {
-								const newName = prompt('Введите новое название задачи');
-								if (newName) {
-									editingItem(id, newName);
-								}
-							}}
-						>
-							изменить
-						</button>
-						<div>
-							{id}. {name}
+			{Object.entries(todos)
+				.filter(([id, { name }]) => name.includes(search))
+				.map(([id, { name }]) => (
+					<div key={id}>
+						<div className="item-todo">
+							<button
+								className="item-delete"
+								disabled={isDeleting}
+								onClick={() => {
+									deleteItem(id);
+								}}
+							>
+								X
+							</button>
+							<button
+								className="item-edit"
+								onClick={() => {
+									const newName = prompt(
+										'Введите новое название задачи',
+									);
+									if (newName) {
+										editingItem(id, newName);
+									}
+								}}
+							>
+								изменить
+							</button>
+							<div>{name}</div>
 						</div>
 					</div>
-				</div>
-			))}
+				))}
 		</div>
 	);
 };
